@@ -21,6 +21,7 @@ __Important__: this driver is a work in progress and is not complete. Do not exp
 
 ## Installing (development/testing)
 - Only use with OpenCore Bootloader or if you know what you are doing
+- Only MacOS 13 Ventura support (for now)
 
 ## Contributing
 - Contributions and pull requests are welcome. Please open issues describing bugs or desired features.

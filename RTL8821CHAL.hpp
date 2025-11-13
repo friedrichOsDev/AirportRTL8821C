@@ -17,4 +17,26 @@
 #define REG_TRSW    0xca0 // transceiver switch register
 
 // Hardware Abstraction Layer Class
+class RTL8821CHAL : public OSObject {
+    OSDeclareDefaultStructors(RTL8821CHAL)
+
+public:
+    static RTL8821CHAL* withProvider(IOPCIDevice *device);
+    virtual bool init() override;
+    virtual void free() override;
+
+    bool initChip();
+
+    void write8(uint32_t addr, uint8_t data);
+    uint8_t read8(uint32_t addr);
+    void write32(uint32_t addr, uint32_t data);
+    uint32_t read32(uint32_t addr);
+    void write32Mask(uint32_t addr, uint32_t data, uint32_t mask);
+
+private:
+    IOPCIDevice *fPciDevice;
+    IOMemoryMap *fMmioMap;
+    volatile uint8_t *fMmioBase;
+};
+
 #endif // RTL8821CHAL_HPP

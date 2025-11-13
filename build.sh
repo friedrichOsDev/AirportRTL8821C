@@ -8,8 +8,7 @@ OBJECTS="RTL8821CPCIe.o RTL8821CHAL.o AirportRTL8821C.o"
 OUTPUT_DIR="build"
 
 KERNEL_HEADER_PATH="${SDK_PATH}/System/Library/Frameworks/Kernel.framework/Headers"
-CFLAGS="-arch x86_64 -mmacosx-version-min=13.0 -mkernel -fno-exceptions -fno-rtti -Werror -Wno-unused-command-line-argument -DKERNEL -D__kpi_mac -isysroot ${SDK_PATH} -I${KERNEL_HEADER_PATH} -I./include"
-
+CFLAGS="-arch x86_64 -mmacosx-version-min=13.0 -mkernel -fno-exceptions -fno-rtti -Wno-unused-command-line-argument -DKERNEL -D__kpi_mac -isysroot ${SDK_PATH} -I${KERNEL_HEADER_PATH} -I./include"
 LDFLAGS="-v -arch x86_64 -r -Wl,-syslibroot,${SDK_PATH} -lSystem"
 
 rm -rf "${OUTPUT_DIR}"
