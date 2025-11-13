@@ -1,6 +1,9 @@
 #ifndef RTL8821CHAL_HPP
 #define RTL8821CHAL_HPP
 
+#include <Kernel/IOKit/IOLib.h>
+#include <Kernel/IOKit/pci/IOPCIDevice.h>
+
 // System Control and Chip-Reset
 #define REG_SYS_CTRL	0x000 // system control register
 #define BIT_FEN_EN	(1 << 26) // function enable bit
@@ -13,4 +16,5 @@
 #define REG_TXDFIR  0xc20 // tx digital filter register
 #define REG_TRSW    0xca0 // transceiver switch register
 
+// Hardware Abstraction Layer Class
 #endif // RTL8821CHAL_HPP

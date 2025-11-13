@@ -17,7 +17,7 @@ __Important__: this driver is a work in progress and is not complete. Do not exp
 
 ## Building
 - This project isn't a Xcode project.
-- There is no building logic in the moment.
+- To build the project run: `sh build.sh`
 
 ## Installing (development/testing)
 - Only use with OpenCore Bootloader or if you know what you are doing
