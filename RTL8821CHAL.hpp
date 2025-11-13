@@ -3,6 +3,8 @@
 
 #include <Kernel/IOKit/IOLib.h>
 #include <Kernel/IOKit/pci/IOPCIDevice.h>
+#include <Kernel/IOKit/IOInterrupts.h>
+#include <libkern/OSAtomic.h>
 
 // System Control and Chip-Reset
 #define REG_SYS_CTRL	0x000 // system control register
@@ -21,22 +23,53 @@ class RTL8821CHAL : public OSObject {
     OSDeclareDefaultStructors(RTL8821CHAL)
 
 public:
+    // factory
     static RTL8821CHAL* withProvider(IOPCIDevice *device);
+
+    // lifecycle
     virtual bool init() override;
+    virtual bool start(IOPCIDevice *device); // map resources, allocate DMA, register interrupts
+    virtual void stop(); // disable interrupts, free resources
     virtual void free() override;
 
-    bool initChip();
-
-    void write8(uint32_t addr, uint8_t data);
+    // register access
+    void write8(uint32_t addr, uint8_t val);
     uint8_t read8(uint32_t addr);
-    void write32(uint32_t addr, uint32_t data);
+    void write32(uint32_t addr, uint32_t val);
     uint32_t read32(uint32_t addr);
     void write32Mask(uint32_t addr, uint32_t data, uint32_t mask);
 
+    // firmware / nvram
+    bool loadFirmware(const uint8_t *fw, size_t len);
+    bool readEeprom(uint32_t offset, void *buf, size_t len);
+
+    // PHY / RF / power
+    bool powerOn();
+    bool powerOff();
+    bool initRf();
+    bool calibrate();
+
+    // DMA / discriptors
+    bool initRings();
+    void teardownRings();
+    bool submitTxDescriptor(void *pkt, uint32_t len);
+    // callback for upper layer to fetch RX packet: implemented via delegate in driver
+
+    // interrupts
+    void enableInterrupts();
+    void disableInterrupts();
+    void handleInterrupt();
+
 private:
+    // hardware handles
     IOPCIDevice *fPciDevice;
     IOMemoryMap *fMmioMap;
     volatile uint8_t *fMmioBase;
+
+    IOInterruptEventSource *fIntSource;
+    // DMA/Ring bookkeeping (IOBufferMemoryDescriptor etc.)
+    // Locks and state
+    IOLock *fLock;
 };
 
 #endif // RTL8821CHAL_HPP
