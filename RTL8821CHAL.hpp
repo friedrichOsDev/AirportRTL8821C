@@ -6,6 +6,10 @@
 #include <Kernel/IOKit/IOInterrupts.h>
 #include <libkern/OSAtomic.h>
 
+#ifndef OSMemoryBarrier
+#define OSMemoryBarrier() __sync_synchronize()
+#endif
+
 // System Control and Chip-Reset
 #define REG_SYS_CTRL	0x000 // system control register
 #define BIT_FEN_EN	(1 << 26) // function enable bit
@@ -65,8 +69,7 @@ private:
     IOPCIDevice *fPciDevice;
     IOMemoryMap *fMmioMap;
     volatile uint8_t *fMmioBase;
-
-    IOInterruptEventSource *fIntSource;
+    IOInterruptSource *fIntSource;
     // DMA/Ring bookkeeping (IOBufferMemoryDescriptor etc.)
     // Locks and state
     IOLock *fLock;
