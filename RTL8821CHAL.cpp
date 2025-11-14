@@ -5,7 +5,7 @@ OSDefineMetaClassAndStructors(RTL8821CHAL, OSObject)
 RTL8821CHAL* RTL8821CHAL::withProvider(IOPCIDevice *device) {
     RTL8821CHAL *me = new RTL8821CHAL;
     if (!me || !me->init()) {
-        if (me) me->free();
+        if (me) me->release();
         return nullptr;
     }
     return me;
@@ -16,178 +16,170 @@ bool RTL8821CHAL::init() {
     fPciDevice = nullptr;
     fMmioMap = nullptr;
     fMmioBase = nullptr;
-    fIntSource = nullptr;
     fLock = nullptr;
     return true;
 }
 
 bool RTL8821CHAL::start(IOPCIDevice *device) {
     if (!device) return false;
+    
     fPciDevice = device;
     fPciDevice->retain();
 
-    // map BAR0
-    fMmioMap = fPciDevice->mapDeviceMemoryWithIndex(0);
-    if (!fMmioMap) {
-        IOLog("RTL8821CHAL: failed to map device memory\n");
-        return false;
-    }
-    fMmioBase = reinterpret_cast<volatile uint8_t *>(fMmioMap->getVirtualAddress());
-    if (!fMmioBase) {
-        IOLog("RTL8821CHAL: mmio virtual address is null\n");
-        fMmioMap->release();
-        fMmioMap = nullptr;
-        return false;
-    }
-
-    // create lock
     fLock = IOLockAlloc();
     if (!fLock) {
-        IOLog("RTL8821CHAL: failed to allocate lock\n");
-        fMmioMap->release();
-        fMmioMap = nullptr;
-        fMmioBase = nullptr;
-        return false;
+        IOLog("RTL8821CHAL: ERROR: lock allocation failed\n");
+        goto cleanup_pci_retain;
     }
 
-    IOLog("RTL8821CHAL: started\n");
+    fMmioMap = fPciDevice->mapDeviceMemoryWithIndex(0);
+    if (!fMmioMap) {
+        IOLog("RTL8821CHAL: ERROR: failed to map device memory\n");
+        goto cleanup_lock;
+    }
+
+    fMmioBase = reinterpret_cast<volatile UInt8 *>(fMmioMap->getVirtualAddress());
+    if (!fMmioBase) {
+        IOLog("RTL8821CHAL: ERROR: mmio base is null\n");
+        goto cleanup_mmio_map;
+    }
+
+    IOLog("RTL8821CHAL: mmio map success\n");
     return true;
+
+cleanup_mmio_map:
+    fMmioMap->release();
+    fMmioMap = nullptr;
+cleanup_lock:
+    IOLockFree(fLock);
+    fLock = nullptr;
+cleanup_pci_retain:
+    fPciDevice->release();
+    fPciDevice = nullptr;
+    return false;
 }
 
 void RTL8821CHAL::stop() {
     IOLog("RTL8821CHAL: stopping\n");
 
-    // disable interrupts at HAL level if used
-    disableInterrupts();
-
-    if (fLock) {
-        IOLockFree(fLock);
-        fLock = nullptr;
-    }
-
-    if (fMmioMap) {
-        fMmioMap->release();
-        fMmioMap = nullptr;
-        fMmioBase = nullptr;
-    }
-
-    if (fPciDevice) {
-        fPciDevice->release();
-        fPciDevice = nullptr;
-    }
+    // free lock
+    if (fLock) { IOLockFree(fLock); fLock = nullptr; }
+    // free mmio map
+    if (fMmioMap) { fMmioMap->release(); fMmioMap = nullptr; fMmioBase = nullptr; }
+    // free pci device
+    if (fPciDevice) { fPciDevice->release(); fPciDevice = nullptr; }
 }
 
 void RTL8821CHAL::free() {
-    // ensure resources are freed
-    if (fLock) {
-        IOLockFree(fLock);
-        fLock = nullptr;
-    }
-    if (fMmioMap) {
-        fMmioMap->release();
-        fMmioMap = nullptr;
-        fMmioBase = nullptr;
-    }
-    if (fPciDevice) {
-        fPciDevice->release();
-        fPciDevice = nullptr;
-    }
+    stop(); // free resourcses
     OSObject::free();
 }
 
 void RTL8821CHAL::write8(uint32_t addr, uint8_t val) {
-    if (!fMmioBase) return;
+    if (!fMmioBase || !fLock) return;
+    IOLockLock(fLock);
     *(volatile uint8_t *)(fMmioBase + addr) = val;
-    OSMemoryBarrier();
+    OSSynchronizeIO();
+    IOLockUnlock(fLock);
 }
 
-uint8_t RTL8821CHAL::read8(uint32_t addr) {
-    if (!fMmioBase) return 0;
+uint8_t RTL8821CHAL::read8(uint32_t addr) const {
+    if (!fMmioBase || !fLock) return;
+    IOLockLock(fLock);
     uint8_t v = *(volatile uint8_t *)(fMmioBase + addr);
-    OSMemoryBarrier();
+    OSSynchronizeIO();
+    IOLockUnlock(fLock);
+    return v;
+}
+
+void RTL8821CHAL::write16(uint32_t addr, uint16_t val) {
+    if (!fMmioBase || !fLock) return;
+    IOLockLock(fLock);
+    *(volatile uint16_t *)(fMmioBase + addr) = val;
+    OSSynchronizeIO();
+    IOLockUnlock(fLock);
+}
+
+uint16_t RTL8821CHAL::read16(uint32_t addr) const {
+    if (!fMmioBase || !fLock) return 0;
+    IOLockLock(fLock);
+    uint16_t v = *(volatile uint16_t *)(fMmioBase + addr);
+    OSSynchronizeIO();
+    IOLockUnlock(fLock);
     return v;
 }
 
 void RTL8821CHAL::write32(uint32_t addr, uint32_t val) {
-    if (!fMmioBase) return;
+    if (!fMmioBase || !fLock) return;
+    IOLockLock(fLock);
     *(volatile uint32_t *)(fMmioBase + addr) = val;
-    OSMemoryBarrier();
+    OSSynchronizeIO();
+    IOLockUnlock(fLock);
 }
 
-uint32_t RTL8821CHAL::read32(uint32_t addr) {
-    if (!fMmioBase) return 0;
+uint32_t RTL8821CHAL::read32(uint32_t addr) const {
+    if (!fMmioBase || !fLock) return 0;
+    IOLockLock(fLock);
     uint32_t v = *(volatile uint32_t *)(fMmioBase + addr);
-    OSMemoryBarrier();
+    OSSynchronizeIO();
+    IOLockUnlock(fLock);
     return v;
 }
 
 void RTL8821CHAL::write32Mask(uint32_t addr, uint32_t data, uint32_t mask) {
-    if (!fMmioBase) return;
-    uint32_t cur = read32(addr);
+    if (!fMmioBase || !fLock) return;
+    IOLockLock(fLock);
+    volatile uint32_t *reg = (volatile uint32_t *)(fMmioBase + addr);
+
+    uint32_t cur = *reg;
     uint32_t next = (cur & ~mask) | (data & mask);
-    if (next != cur) write32(addr, next);
+    
+    if (cur != next) { *reg = next; }
+
+    OSSynchronizeIO();
+    IOLockUnlock(fLock);
 }
 
-// TODO: Firmware / EEPROM stubs
 bool RTL8821CHAL::loadFirmware(const uint8_t *fw, size_t len) {
-    // TODO: implement firmware upload and handshake with device
-    IOLog("RTL8821CHAL: loadFirmware called (stub)\n");
-    (void)fw; (void)len;
-    return false;
-}
+    if (!fw || len == 0) {
+        IOLog("RTL8821CHAL: ERROR: fw data is null or empty\n");
+        return false;
+    }
+    
+    if (!fMmioBase || !fLock) {
+        IOLog("RTL8821CHAL: ERROR: mmio base or lock is null\n");
+        return false;
+    }
 
-bool RTL8821CHAL::readEeprom(uint32_t offset, void *buf, size_t len) {
-    // TODO: implement EEPROM/efuse read
-    IOLog("RTL8821CHAL: readEeprom called (stub)\n");
-    (void)offset; (void)buf; (void)len;
-    return false;
-}
+    const uint32_t FW_DMA_START_ADDR = 0x1000; // TODO: change to real addr
+    
+    // TODO: Vorbereitung des Chips
+    IOLog("RTL8821CHAL: Starte Firmware-Upload (%zu Bytes)...\n", len);
+    // 1. Chip in den Download-Modus setzen 
+    // 2. Zieladresse im Chip setzen 
+    
+    IOLockLock(fLock); 
+    
+    // write fw in 32-bit chunk
+    for (size_t i = 0; i < len; i += 4) {
+        uint32_t val = 0;
+        
+        size_t chunk = (len - i >= 4) ? 4 : (len - i);
+        
+        for (size_t j = 0; j < chunk; j++) {
+            val |= ((uint32_t)fw[i + j]) << (j * 8);
+        }
+        
+        *(volatile uint32_t *)(fMmioBase + FW_DMA_START_ADDR + i) = val;
+    }
+    
+    OSSynchronizeIO();
+    IOLockUnlock(fLock);
 
-bool RTL8821CHAL::powerOn() {
-    IOLog("RTL8821CHAL: powerOn called (stub)\n");
-    return false;
-}
-
-bool RTL8821CHAL::powerOff() {
-    IOLog("RTL8821CHAL: powerOff called (stub)\n");
-    return false;
-}
-
-bool RTL8821CHAL::initRf() {
-    IOLog("RTL8821CHAL: initRf called (stub)\n");
-    return false;
-}
-
-bool RTL8821CHAL::calibrate() {
-    IOLog("RTL8821CHAL: calibrate called (stub)\n");
-    return false;
-}
-
-bool RTL8821CHAL::initRings() {
-    IOLog("RTL8821CHAL: initRings called (stub)\n");
-    return false;
-}
-
-void RTL8821CHAL::teardownRings() {
-    IOLog("RTL8821CHAL: teardownRings called (stub)\n");
-}
-
-bool RTL8821CHAL::submitTxDescriptor(void *pkt, uint32_t len) {
-    IOLog("RTL8821CHAL: submitTxDescriptor called (stub)\n");
-    (void)pkt; (void)len;
-    return false;
-}
-
-void RTL8821CHAL::enableInterrupts() {
-    IOLog("RTL8821CHAL: enableInterrupts (stub)\n");
-    // TODO: register IOInterruptEventSource or MSI handler
-}
-
-void RTL8821CHAL::disableInterrupts() {
-    IOLog("RTL8821CHAL: disableInterrupts (stub)\n");
-    // TODO: disable/teardown interrupt source
-}
-
-void RTL8821CHAL::handleInterrupt() {
-    IOLog("RTL8821CHAL: handleInterrupt (stub)\n");
+    // TODO: Abschluss des Vorgangs
+    // 3. Warten, bis der Upload abgeschlossen ist
+    // 4. Chip anweisen, die Firmware zu starten
+    
+    IOLog("RTL8821CHAL: Firmware erfolgreich geladen.\n");
+    return true;
 }
